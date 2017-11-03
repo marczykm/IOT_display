@@ -6,7 +6,6 @@
 #include "SSD1306.h"
 #include "SH1106.h"
 
-#define OLED_RESET 4
 SSD1306 display(0x3C, 4, 5);
 ADC_MODE(ADC_VCC);
 
@@ -19,6 +18,8 @@ PubSubClient client(espClient);
 
 unsigned long previousMillis = 0;
 const long interval = 5000;
+
+int lastPercent = 0;
 
 void setup()   {                
   Serial.begin(9600);
@@ -58,8 +59,6 @@ void connectToWifi(){
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
-    display.drawString(0,10,".");
-    display.display();
   }
   Serial.println();
   Serial.println("WiFi connected");
@@ -79,50 +78,56 @@ void printTemperature(String temperature){
   display.display();
 }
 
+void updateVccPercent() {
+  lastPercent = vccToPercent(ESP.getVcc());
+}
+
 void printVcc(){
-  int percent = vccToPercent(ESP.getVcc());
   display.setFont(ArialMT_Plain_16);
   display.drawString(0,25,"bat:");
-  display.drawString(45,25, String(percent));
+  display.drawString(45,25, String(lastPercent));
   display.drawString(75,25, "%");
-  display.drawProgressBar(1, 55, 120, 8, percent);
+  display.drawProgressBar(1, 55, 120, 8, lastPercent);
   display.display();
 }
 
 void sendVcc(){
   char buf[100];
   int percent = vccToPercent(ESP.getVcc());
-  String dupa = String(percent);
-  dupa.toCharArray(buf, sizeof dupa);
+  String percentString = String(percent);
+  percentString.toCharArray(buf, sizeof percentString);
   client.publish("vcc", buf);
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
   unsigned long currentMillis = millis();
+  Serial.print("Message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  String payloadString = "";
+  for (int i=0;i<length;i++) {
+    payloadString = payloadString+(char)payload[i];
+  }
+  Serial.println(payloadString);
+  if (String(topic) == "temperature"){
+    printTemperature(payloadString);
+  } else if (String(topic) == "display") {
+    if (payloadString == "0"){
+      display.displayOff();
+    } else {
+      display.displayOn();
+    }
+  } else if (String(topic) == "reset") {
+    ESP.reset();
+  }
+  
   if (currentMillis - previousMillis >= interval){
     previousMillis = currentMillis;
-    Serial.print("Message arrived [");
-    Serial.print(topic);
-    Serial.print("] ");
-    String payloadString = "";
-    for (int i=0;i<length;i++) {
-      payloadString = payloadString+(char)payload[i];
-    }
-    Serial.println(payloadString);
-    if (String(topic) == "temperature"){
-      printTemperature(payloadString);
-    } else if (String(topic) == "display") {
-      if (payloadString == "0"){
-        display.displayOff();
-      } else {
-        display.displayOn();
-      }
-    } else if (String(topic) == "reset") {
-      ESP.reset();
-    }
-    printVcc();
+    updateVccPercent();
     sendVcc();
   }
+
+  printVcc();
 }
 
 void reconnect() {
