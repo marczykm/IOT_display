@@ -11,7 +11,7 @@ ADC_MODE(ADC_VCC);
 
 const char* ssid = "TP-LINK";
 const char* password = "dupadupa";
-const char* mqtt_server = "192.168.0.100";
+const char* mqtt_server = "marczyk.it";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -20,6 +20,8 @@ unsigned long previousMillis = 0;
 const long interval = 5000;
 
 int lastPercent = 0;
+float lastVoltage = 0;
+boolean first = true;
 
 void setup()   {                
   Serial.begin(9600);
@@ -67,39 +69,39 @@ void connectToWifi(){
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
   display.display();
-  delay(1500);
 }
 
 void printTemperature(String temperature){
-  display.setFont(ArialMT_Plain_16);
-  display.clear();
   display.drawString(0,0,temperature);
   display.drawString(45,0,"'C");
-  display.display();
 }
 
 void updateVccPercent() {
-  lastPercent = vccToPercent(ESP.getVcc());
+  lastPercent = vccToPercent();
+  lastVoltage = getVoltage();
 }
 
 void printVcc(){
-  display.setFont(ArialMT_Plain_16);
   display.drawString(0,25,"bat:");
-  display.drawString(45,25, String(lastPercent));
-  display.drawString(75,25, "%");
+  display.drawString(45,25, String(lastVoltage));
+  display.drawString(75,25, "V");
   display.drawProgressBar(1, 55, 120, 8, lastPercent);
-  display.display();
+}
+
+float getVoltage(){
+  return (float)ESP.getVcc()/1024.0;
 }
 
 void sendVcc(){
   char buf[100];
-  int percent = vccToPercent(ESP.getVcc());
+  int percent = vccToPercent();
   String percentString = String(percent);
   percentString.toCharArray(buf, sizeof percentString);
   client.publish("vcc", buf);
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
+  display.clear();
   unsigned long currentMillis = millis();
   Serial.print("Message arrived [");
   Serial.print(topic);
@@ -126,8 +128,8 @@ void callback(char* topic, byte* payload, unsigned int length) {
     updateVccPercent();
     sendVcc();
   }
-
   printVcc();
+  display.display();
 }
 
 void reconnect() {
@@ -147,23 +149,27 @@ void reconnect() {
       client.subscribe("temperature");
       client.subscribe("display");
       client.subscribe("reset");
+      if (first)
+        client.publish("display", "1");
+      first = false;
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
+      Serial.println(" try again in 1 second");
       // Wait 5 seconds before retrying
-      delay(5000);
+      delay(1000);
     }
   }
 }
 
-int vccToPercent(int vcc) {
+int vccToPercent() {
   int empty = 2110;
   int full = 3010;
 
-  int currentVcc = vcc - empty;
+  int currentVcc = ESP.getVcc() - empty;
   double currentPercent = 100 * currentVcc / (full - empty);
 
   return (int)currentPercent;
 }
+
 
