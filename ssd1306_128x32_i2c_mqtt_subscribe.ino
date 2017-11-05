@@ -83,8 +83,11 @@ void updateVccPercent() {
 
 void printVcc(){
   display.drawString(0,25,"bat:");
-  display.drawString(45,25, String(lastVoltage));
-  display.drawString(75,25, "V");
+  display.drawString(30,25, String(lastVoltage));
+  display.drawString(60,25, "V");
+  display.drawString(75,25, "(");
+  display.drawString(80,25, String(ESP.getVcc()));
+  display.drawString(115,25, ")");
   display.drawProgressBar(1, 55, 120, 8, lastPercent);
 }
 
@@ -165,6 +168,9 @@ void reconnect() {
 int vccToPercent() {
   int empty = 2110;
   int full = 3010;
+
+  Serial.print("current vcc: ");
+  Serial.println(ESP.getVcc());
 
   int currentVcc = ESP.getVcc() - empty;
   double currentPercent = 100 * currentVcc / (full - empty);
