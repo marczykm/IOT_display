@@ -8,6 +8,7 @@
 #include <DNSServer.h>
 #include <WiFiManager.h>
 #include <Ticker.h>
+
 Ticker ticker;
 
 SSD1306 display(0x3C, 4, 5);
@@ -18,6 +19,9 @@ const char* mqtt_server = "marczyk.it";
 WiFiClient espClient;
 PubSubClient client(espClient);
 
+#define ONBOARD_LED 2
+#define RESET_PIN 0
+
 unsigned long previousMillis = 0;
 const long interval = 5000;
 
@@ -25,8 +29,14 @@ int lastPercent = 0;
 float lastVoltage = 0;
 boolean first = true;
 
-void setup()   {                
+void setup(){                
   Serial.begin(9600);
+  pinMode(ONBOARD_LED, OUTPUT);
+  #ifdef RESET_PIN
+  pinMode(RESET_PIN, INPUT);
+  #endif
+  digitalWrite(ONBOARD_LED, LOW);
+  
   display.init();
   display.flipScreenVertically();
   display.clear();
@@ -42,6 +52,23 @@ void setup()   {
 
   WiFiManager wifiManager;
 
+  #ifdef RESET_PIN
+  if (digitalRead(RESET_PIN) == LOW) {
+    Serial.println("RESET");
+    tickerOn();
+    configureInfo();
+
+    if (!wifiManager.startConfigPortal()) {
+      Serial.println("failed to connect and hit timeout");
+      delay(3000);
+      //reset and try again, or maybe put it to deep sleep
+      ESP.reset();
+      delay(5000);
+    }
+  }
+  tickerOff();
+  #endif
+
   wifiManager.setAPCallback(configModeCallback);
 
   if (!wifiManager.autoConnect()) {
@@ -52,15 +79,13 @@ void setup()   {
   }
 
   Serial.println("connected...yeey :)");
-  
-//  connectToWifi();
+  digitalWrite(ONBOARD_LED, HIGH);
+  tickerOff();
 }
 
-void tick()
-{
-  //toggle state
-  int state = digitalRead(BUILTIN_LED);  // get the current state of GPIO1 pin
-  digitalWrite(BUILTIN_LED, !state);     // set pin to the opposite state
+void tick(){
+  int state = digitalRead(ONBOARD_LED);
+  digitalWrite(ONBOARD_LED, !state);
 }
 
 void configModeCallback (WiFiManager *myWiFiManager) {
@@ -69,44 +94,34 @@ void configModeCallback (WiFiManager *myWiFiManager) {
   //if you used auto generated SSID, print it
   Serial.println(myWiFiManager->getConfigPortalSSID());
   //entered config mode, make led toggle faster
-  ticker.attach(0.2, tick);
+  tickerOn();
+  configureInfo();
+}
+
+void configureInfo(){
+  display.setFont(ArialMT_Plain_10);
+  display.clear();
+  display.drawString(0,0,"Connect to AP named:");
+  String AP = " ESP"+String(ESP.getChipId());
+  display.drawString(0,10,AP);
+  display.drawString(0,25,"go to IP address");
+  display.drawString(0,35," 192.168.4.1");
+  display.drawString(0,50,"configure your home AP");
+  display.display();
 }
 
 void loop() {
-  Serial.println("loop");
-
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
 
-  Serial.println("connected...yeey :)");
-  
   if (!client.connected()) {
     reconnect();
   }
   client.loop();
 }
 
-void connectToWifi(){
-  display.clear();
-  display.drawString(0,0,"Connecting to\nWiFi");
-  display.display();
-  
-//  WiFi.begin(ssid, password);
-  Serial.println();
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println();
-  Serial.println("WiFi connected");
-  display.clear();
-  display.drawString(0, 0, "WiFi connected\n");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
-  display.display();
-}
-
 void printTemperature(String temperature){
+  display.setFont(ArialMT_Plain_16);
   display.drawString(0,0,temperature);
   display.drawString(45,0,"'C");
 }
@@ -202,7 +217,7 @@ void reconnect() {
 
 int vccToPercent() {
   int empty = 2110;
-  int full = 2900;
+  int full = 2800;
 
   Serial.print("current vcc: ");
   Serial.println(ESP.getVcc());
@@ -213,4 +228,11 @@ int vccToPercent() {
   return (int)currentPercent;
 }
 
+void tickerOn(){
+  ticker.attach(0.2, tick);
+}
+
+void tickerOff(){
+  ticker.detach();
+}
 
