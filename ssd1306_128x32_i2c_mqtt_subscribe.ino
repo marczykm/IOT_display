@@ -1,16 +1,19 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <EEPROM.h>
-#include <ESP8266WiFi.h>
+//#include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include "SSD1306.h"
 #include "SH1106.h"
+#include <ESP8266WebServer.h>
+#include <DNSServer.h>
+#include <WiFiManager.h>
+#include <Ticker.h>
+Ticker ticker;
 
 SSD1306 display(0x3C, 4, 5);
 ADC_MODE(ADC_VCC);
 
-const char* ssid = "TP-LINK";
-const char* password = "dupadupa";
 const char* mqtt_server = "marczyk.it";
 
 WiFiClient espClient;
@@ -37,14 +40,47 @@ void setup()   {
   delay(3000);
   display.clear();
   display.setFont(ArialMT_Plain_16);
+
+  WiFiManager wifiManager;
+
+  wifiManager.setAPCallback(configModeCallback);
+
+  if (!wifiManager.autoConnect()) {
+    Serial.println("failed to connect and hit timeout");
+    //reset and try again, or maybe put it to deep sleep
+    ESP.reset();
+    delay(1000);
+  }
+
+  Serial.println("connected...yeey :)");
   
-  connectToWifi();
-  
-  client.setServer(mqtt_server, 1883);
-  client.setCallback(callback);
+//  connectToWifi();
+}
+
+void tick()
+{
+  //toggle state
+  int state = digitalRead(BUILTIN_LED);  // get the current state of GPIO1 pin
+  digitalWrite(BUILTIN_LED, !state);     // set pin to the opposite state
+}
+
+void configModeCallback (WiFiManager *myWiFiManager) {
+  Serial.println("Entered config mode");
+  Serial.println(WiFi.softAPIP());
+  //if you used auto generated SSID, print it
+  Serial.println(myWiFiManager->getConfigPortalSSID());
+  //entered config mode, make led toggle faster
+  ticker.attach(0.2, tick);
 }
 
 void loop() {
+  Serial.println("loop");
+
+  client.setServer(mqtt_server, 1883);
+  client.setCallback(callback);
+
+  Serial.println("connected...yeey :)");
+  
   if (!client.connected()) {
     reconnect();
   }
@@ -56,7 +92,7 @@ void connectToWifi(){
   display.drawString(0,0,"Connecting to\nWiFi");
   display.display();
   
-  WiFi.begin(ssid, password);
+//  WiFi.begin(ssid, password);
   Serial.println();
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
