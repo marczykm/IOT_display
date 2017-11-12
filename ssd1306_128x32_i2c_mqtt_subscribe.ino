@@ -1,7 +1,6 @@
 #include <SPI.h>
 #include <Wire.h>
 #include <EEPROM.h>
-//#include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 #include "SSD1306.h"
 #include "SH1106.h"
