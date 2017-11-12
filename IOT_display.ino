@@ -21,6 +21,7 @@ PubSubClient client(espClient);
 
 #define ONBOARD_LED 2
 #define RESET_PIN 0
+//#define DEBUG
 
 unsigned long previousMillis = 0;
 const long interval = 5000;
@@ -29,14 +30,17 @@ int lastPercent = 0;
 float lastVoltage = 0;
 boolean first = true;
 
-void setup(){                
+float temperature = 0;
+boolean rain = false;
+
+void setup() {
   Serial.begin(9600);
   pinMode(ONBOARD_LED, OUTPUT);
-  #ifdef RESET_PIN
+#ifdef RESET_PIN
   pinMode(RESET_PIN, INPUT);
-  #endif
+#endif
   digitalWrite(ONBOARD_LED, LOW);
-  
+
   display.init();
   display.flipScreenVertically();
   display.clear();
@@ -52,7 +56,7 @@ void setup(){
 
   WiFiManager wifiManager;
 
-  #ifdef RESET_PIN
+#ifdef RESET_PIN
   if (digitalRead(RESET_PIN) == LOW) {
     Serial.println("RESET");
     tickerOn();
@@ -67,7 +71,7 @@ void setup(){
     }
   }
   tickerOff();
-  #endif
+#endif
 
   wifiManager.setAPCallback(configModeCallback);
 
@@ -83,7 +87,7 @@ void setup(){
   tickerOff();
 }
 
-void tick(){
+void tick() {
   int state = digitalRead(ONBOARD_LED);
   digitalWrite(ONBOARD_LED, !state);
 }
@@ -98,15 +102,15 @@ void configModeCallback (WiFiManager *myWiFiManager) {
   configureInfo();
 }
 
-void configureInfo(){
+void configureInfo() {
   display.setFont(ArialMT_Plain_10);
   display.clear();
-  display.drawString(0,0,"Connect to AP named:");
-  String AP = " ESP"+String(ESP.getChipId());
-  display.drawString(0,10,AP);
-  display.drawString(0,25,"go to IP address");
-  display.drawString(0,35," 192.168.4.1");
-  display.drawString(0,50,"configure your home AP");
+  display.drawString(0, 0, "Connect to AP named:");
+  String AP = " ESP" + String(ESP.getChipId());
+  display.drawString(0, 10, AP);
+  display.drawString(0, 25, "go to IP address");
+  display.drawString(0, 35, " 192.168.4.1");
+  display.drawString(0, 50, "configure your home AP");
   display.display();
 }
 
@@ -120,10 +124,33 @@ void loop() {
   client.loop();
 }
 
-void printTemperature(String temperature){
+void printTemperature() {
   display.setFont(ArialMT_Plain_16);
-  display.drawString(0,0,temperature);
-  display.drawString(45,0,"'C");
+  char buf[100];
+  String temperatureString = String(temperature);
+  temperatureString.toCharArray(buf, sizeof temperatureString);
+  display.drawString(0, 0, buf);
+  display.drawString(45, 0, "'C");
+}
+
+void updateTemperature(String temperatureA) {
+  temperature = temperatureA.toFloat();
+}
+
+void printRain() {
+  display.setFont(ArialMT_Plain_16);
+  int rainX = 100;
+  if (rain)
+    display.drawString(rainX, 0, "''''''''");
+  else
+    display.drawString(rainX, 0, "_*___");
+}
+
+void updateRain(String rainA) {
+  if (rainA == "1")
+    rain = true;
+  else
+    rain = false;
 }
 
 void updateVccPercent() {
@@ -131,21 +158,25 @@ void updateVccPercent() {
   lastVoltage = getVoltage();
 }
 
-void printVcc(){
-  display.drawString(0,25,"bat:");
-  display.drawString(30,25, String(lastVoltage));
-  display.drawString(60,25, "V");
-  display.drawString(75,25, "(");
-  display.drawString(80,25, String(ESP.getVcc()));
-  display.drawString(115,25, ")");
+void printVcc() {
+  display.drawString(0, 25, "bat:");
+  display.drawString(30, 25, String(lastVoltage));
+  display.drawString(60, 25, "V");
+
+#ifdef DEBUG
+  display.drawString(75, 25, "(");
+  display.drawString(80, 25, String(ESP.getVcc()));
+  display.drawString(115, 25, ")");
+#endif
+
   display.drawProgressBar(1, 55, 120, 8, lastPercent);
 }
 
-float getVoltage(){
-  return (float)ESP.getVcc()/1024.0;
+float getVoltage() {
+  return (float)ESP.getVcc() / 1024.0;
 }
 
-void sendVcc(){
+void sendVcc() {
   char buf[100];
   int percent = vccToPercent();
   String percentString = String(percent);
@@ -160,14 +191,16 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print(topic);
   Serial.print("] ");
   String payloadString = "";
-  for (int i=0;i<length;i++) {
-    payloadString = payloadString+(char)payload[i];
+  for (int i = 0; i < length; i++) {
+    payloadString = payloadString + (char)payload[i];
   }
   Serial.println(payloadString);
-  if (String(topic) == "temperature"){
-    printTemperature(payloadString);
+  if (String(topic) == "temperature") {
+    updateTemperature(payloadString);
+  } else if (String(topic) == "rain") {
+    updateRain(payloadString);
   } else if (String(topic) == "display") {
-    if (payloadString == "0"){
+    if (payloadString == "0") {
       display.displayOff();
     } else {
       display.displayOn();
@@ -175,13 +208,15 @@ void callback(char* topic, byte* payload, unsigned int length) {
   } else if (String(topic) == "reset") {
     ESP.reset();
   }
-  
-  if (currentMillis - previousMillis >= interval){
+
+  if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
     updateVccPercent();
     sendVcc();
   }
   printVcc();
+  printTemperature();
+  printRain();
   display.display();
 }
 
@@ -200,6 +235,7 @@ void reconnect() {
       // Once connected, publish an announcement...
       // ... and resubscribe
       client.subscribe("temperature");
+      client.subscribe("rain");
       client.subscribe("display");
       client.subscribe("reset");
       if (first)
@@ -217,7 +253,7 @@ void reconnect() {
 
 int vccToPercent() {
   int empty = 2110;
-  int full = 2800;
+  int full = 2780;
 
   Serial.print("current vcc: ");
   Serial.println(ESP.getVcc());
@@ -228,11 +264,11 @@ int vccToPercent() {
   return (int)currentPercent;
 }
 
-void tickerOn(){
+void tickerOn() {
   ticker.attach(0.2, tick);
 }
 
-void tickerOff(){
+void tickerOff() {
   ticker.detach();
 }
 
