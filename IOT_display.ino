@@ -208,19 +208,6 @@ void reconnect() {
   }
 }
 
-int vccToPercent() {
-  int empty = 2110;
-  int full = 2780;
-
-  Serial.print("current vcc: ");
-  Serial.println(ESP.getVcc());
-
-  int currentVcc = ESP.getVcc() - empty;
-  double currentPercent = 100 * currentVcc / (full - empty);
-
-  return (int)currentPercent;
-}
-
 void tickerOn() {
   ticker.attach(0.2, tick);
 }
