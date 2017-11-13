@@ -21,13 +21,7 @@ PubSubClient client(espClient);
 
 #define ONBOARD_LED 2
 #define RESET_PIN 0
-//#define DEBUG
 
-unsigned long previousMillis = 0;
-const long interval = 5000;
-
-int lastPercent = 0;
-float lastVoltage = 0;
 boolean first = true;
 
 float temperature = 0;
@@ -153,37 +147,6 @@ void updateRain(String rainA) {
     rain = false;
 }
 
-void updateVccPercent() {
-  lastPercent = vccToPercent();
-  lastVoltage = getVoltage();
-}
-
-void printVcc() {
-  display.drawString(0, 25, "bat:");
-  display.drawString(30, 25, String(lastVoltage));
-  display.drawString(60, 25, "V");
-
-#ifdef DEBUG
-  display.drawString(75, 25, "(");
-  display.drawString(80, 25, String(ESP.getVcc()));
-  display.drawString(115, 25, ")");
-#endif
-
-  display.drawProgressBar(1, 55, 120, 8, lastPercent);
-}
-
-float getVoltage() {
-  return (float)ESP.getVcc() / 1024.0;
-}
-
-void sendVcc() {
-  char buf[100];
-  int percent = vccToPercent();
-  String percentString = String(percent);
-  percentString.toCharArray(buf, sizeof percentString);
-  client.publish("vcc", buf);
-}
-
 void callback(char* topic, byte* payload, unsigned int length) {
   display.clear();
   unsigned long currentMillis = millis();
@@ -209,12 +172,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
     ESP.reset();
   }
 
-  if (currentMillis - previousMillis >= interval) {
-    previousMillis = currentMillis;
-    updateVccPercent();
-    sendVcc();
-  }
-  printVcc();
   printTemperature();
   printRain();
   display.display();
